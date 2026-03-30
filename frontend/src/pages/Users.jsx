@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import {
   UserPlus, Users, Loader2, X, Eye, EyeOff,
-  UserCheck, UserX, Pencil, Shield
+  UserCheck, UserX, Pencil, ShieldOff
 } from 'lucide-react';
 import api from '../services/api.js';
 import toast from 'react-hot-toast';
@@ -33,6 +33,22 @@ function UserModal({ editUser, onClose, onSaved }) {
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to save user'),
   });
+
+  const resetMfa = useMutation({
+    mutationFn: () => api.patch(`/users/${editUser._id}/reset-mfa`),
+    onSuccess: () => {
+      toast.success('2FA reset. User must set it up again on next login');
+      onSaved();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to reset 2FA'),
+  });
+
+  const handleResetMfa = () => {
+    if (!editUser) return;
+    const confirmed = window.confirm(`Reset 2FA for ${editUser.name}? They will be signed out and must set up MFA again on next login.`);
+    if (!confirmed) return;
+    resetMfa.mutate();
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -79,6 +95,28 @@ function UserModal({ editUser, onClose, onSaved }) {
               <option value="admin">Admin</option>
             </select>
           </div>
+          {editUser && (
+            <div className="rounded-xl border border-surface-border bg-surface-soft p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Two-Factor Authentication</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Use this when a user loses their authenticator app.</p>
+                </div>
+                <span className={editUser.mfaEnabled ? 'badge-active' : 'badge-inactive'}>
+                  {editUser.mfaEnabled ? 'Enabled' : 'Pending'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetMfa}
+                disabled={resetMfa.isPending || !editUser.mfaEnabled}
+                className="btn-danger mt-3 w-full"
+              >
+                {resetMfa.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldOff className="w-4 h-4" />}
+                {resetMfa.isPending ? 'Resetting…' : 'Reset 2FA'}
+              </button>
+            </div>
+          )}
           <div className="flex gap-2 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
             <button type="submit" disabled={mutation.isPending} className="btn-primary flex-1">

@@ -139,3 +139,43 @@ export const activateUser = async (req, res, next) => {
     next(err);
   }
 };
+
+// ── PATCH /api/users/:id/reset-mfa ──────────────────────────────────────────
+export const resetUserMfa = async (req, res, next) => {
+  try {
+    if (req.params.id === req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'You cannot reset your own MFA from this screen' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
+        mfaEnabled: false,
+        mfaSecret: undefined,
+        refreshTokenHash: undefined,
+      },
+      { new: true }
+    );
+
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    await createAuditLog('USER_MFA_RESET', {
+      userId: req.user._id,
+      userEmail: req.user.email,
+      userRole: req.user.role,
+      resource: 'User',
+      resourceId: user._id.toString(),
+      details: { email: user.email },
+      ipAddress: getClientIp(req),
+      userAgent: getUserAgent(req),
+    });
+
+    return res.json({
+      success: true,
+      message: 'MFA reset. User must set up MFA again on next login.',
+      user,
+    });
+  } catch (err) {
+    next(err);
+  }
+};

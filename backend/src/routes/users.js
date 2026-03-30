@@ -1,6 +1,13 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { getUsers, createUser, updateUser, deactivateUser, activateUser } from '../controllers/userController.js';
+import {
+  getUsers,
+  createUser,
+  updateUser,
+  deactivateUser,
+  activateUser,
+  resetUserMfa,
+} from '../controllers/userController.js';
 import authenticate from '../middleware/authenticate.js';
 import authorize from '../middleware/authorize.js';
 
@@ -25,5 +32,6 @@ router.post('/', createRules, createUser);
 router.patch('/:id', updateRules, updateUser);
 router.patch('/:id/deactivate', deactivateUser);
 router.patch('/:id/activate', activateUser);
+router.patch('/:id/reset-mfa', resetUserMfa);
 
 export default router;
