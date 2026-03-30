@@ -18,6 +18,7 @@ export const scanDriver = async (req, res, next) => {
     }
 
     const rawNumber = req.body.driverNumber;
+    const source = req.body.source === 'manual' ? 'manual' : 'scan';
     const driverNumber = String(rawNumber).trim().toUpperCase();
     const date = todayKey();
     const ip = getClientIp(req);
@@ -73,7 +74,7 @@ export const scanDriver = async (req, res, next) => {
       admittedBy: req.user._id,
       admittedByName: req.user.name,
       date,
-      method: 'scan',
+      method: source,
       entrySequence,
     });
 

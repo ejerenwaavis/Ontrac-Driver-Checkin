@@ -13,7 +13,7 @@ export default function Scanner() {
   const [overrideTarget, setOverrideTarget] = useState(null); // { driverNumber, driverName, reason }
 
   const scanMutation = useMutation({
-    mutationFn: (driverNumber) => api.post('/admissions/scan', { driverNumber }).then((r) => r.data),
+    mutationFn: ({ driverNumber, source }) => api.post('/admissions/scan', { driverNumber, source }).then((r) => r.data),
     onSuccess: (data) => {
       setResult(data);
       if (data.requiresOverride) {
@@ -26,11 +26,11 @@ export default function Scanner() {
   });
 
   const handleScan = useCallback(
-    (code) => {
+    (code, source = 'scan') => {
       if (scanMutation.isPending) return;
       setResult(null);
       setOverrideTarget(null);
-      scanMutation.mutate(code);
+      scanMutation.mutate({ driverNumber: code, source });
     },
     [scanMutation]
   );

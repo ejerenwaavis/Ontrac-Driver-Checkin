@@ -16,7 +16,10 @@ router.use(authenticate);
 
 router.post(
   '/scan',
-  [body('driverNumber').trim().notEmpty().withMessage('Driver number required')],
+  [
+    body('driverNumber').trim().notEmpty().withMessage('Driver number required'),
+    body('source').optional().isIn(['scan', 'manual']).withMessage('Invalid source'),
+  ],
   scanDriver
 );
 

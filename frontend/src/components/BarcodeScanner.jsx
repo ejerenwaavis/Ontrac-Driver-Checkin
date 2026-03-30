@@ -7,7 +7,7 @@ import useWedgeScanner from '../hooks/useBarcodeInput.js';
  * BarcodeScanner — unified camera + keyboard-wedge barcode input.
  *
  * Props:
- *   onScan(code: string) — called with the scanned/typed barcode
+ *   onScan(code: string, source?: 'scan' | 'manual') — called with barcode and source
  *   disabled: boolean    — pauses all input
  */
 export default function BarcodeScanner({ onScan, disabled = false }) {
@@ -16,9 +16,9 @@ export default function BarcodeScanner({ onScan, disabled = false }) {
   const [manualInput, setManualInput] = useState('');
 
   const handleScan = useCallback(
-    (code) => {
+    (code, source = 'scan') => {
       if (disabled || !code?.trim()) return;
-      onScan(code.trim().toUpperCase());
+      onScan(code.trim().toUpperCase(), source);
     },
     [disabled, onScan]
   );
@@ -29,7 +29,7 @@ export default function BarcodeScanner({ onScan, disabled = false }) {
   const handleManualSubmit = (e) => {
     e.preventDefault();
     if (manualInput.trim()) {
-      handleScan(manualInput.trim());
+      handleScan(manualInput.trim(), 'manual');
       setManualInput('');
     }
   };

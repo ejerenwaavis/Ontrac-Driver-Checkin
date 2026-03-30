@@ -138,7 +138,13 @@ export const confirmMfa = async (req, res, next) => {
       success: true,
       accessToken,
       refreshToken,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        mfaEnabled: user.mfaEnabled,
+      },
     });
   } catch (err) {
     next(err);
@@ -196,7 +202,13 @@ export const verifyMfa = async (req, res, next) => {
       success: true,
       accessToken,
       refreshToken,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        mfaEnabled: user.mfaEnabled,
+      },
     });
   } catch (err) {
     next(err);
