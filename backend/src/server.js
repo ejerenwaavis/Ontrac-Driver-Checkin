@@ -1,0 +1,88 @@
+import 'dotenv/config';
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import morgan from 'morgan';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+import connectDB from './config/db.js';
+import { generalLimiter } from './middleware/rateLimiter.js';
+
+import authRoutes from './routes/auth.js';
+import driverRoutes from './routes/drivers.js';
+import admissionRoutes from './routes/admissions.js';
+import userRoutes from './routes/users.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 4000;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+// ─── Database ────────────────────────────────────────────────────────────────
+connectDB();
+
+// ─── Security Middleware ──────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+}));
+
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production'
+    ? [FRONTEND_URL]
+    : ['http://localhost:5173', 'http://localhost:4000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// ─── General Middleware ───────────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(generalLimiter);
+
+// ─── API Routes ───────────────────────────────────────────────────────────────
+app.use('/api/auth', authRoutes);
+app.use('/api/drivers', driverRoutes);
+app.use('/api/admissions', admissionRoutes);
+app.use('/api/users', userRoutes);
+
+// ─── Health Check ─────────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', ts: new Date().toISOString() });
+});
+
+// ─── Serve Frontend in Production ────────────────────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+// ─── Global Error Handler ─────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  const status = err.status || 500;
+  const message = process.env.NODE_ENV === 'production' && status === 500
+    ? 'Internal server error'
+    : err.message;
+
+  if (status === 500) {
+    console.error('[ERROR]', err);
+  }
+
+  res.status(status).json({ success: false, message });
+});
+
+app.listen(PORT, () => {
+  console.log(`\n🚀 OnTrac Driver Check-In API running on port ${PORT}`);
+  console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   Frontend URL: ${FRONTEND_URL}\n`);
+});
+
+export default app;
