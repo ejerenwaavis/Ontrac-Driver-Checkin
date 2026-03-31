@@ -241,9 +241,11 @@ export default function PhotoRegister() {
       const canvas = canvasRef.current;
       if (!video || !video.videoWidth || isCapturingRef.current) return;
 
-      const detection = await faceapi
-        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }))
-        .catch(() => null);
+      let detection = null;
+      try {
+        detection = await faceapi
+          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }));
+      } catch { /* skip frame on detection error */ }
 
       if (!detection) {
         readyStartRef.current  = null;
