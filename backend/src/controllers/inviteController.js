@@ -150,6 +150,15 @@ export const registerPhoto = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Driver number not found in system.' });
     }
 
+    // Only active drivers may register a photo
+    if (driver.status !== 'active') {
+      return res.status(403).json({
+        success: false,
+        message: 'This driver account is currently inactive. Only active drivers can register a photo. Please contact your supervisor.',
+        inactive: true,
+      });
+    }
+
     // Block re-registration on regular team invites when photo already exists
     if (invite.type === 'team' && driver.photoUrl) {
       return res.status(409).json({

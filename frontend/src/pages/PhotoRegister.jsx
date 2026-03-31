@@ -20,6 +20,7 @@ export default function PhotoRegister() {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
+  const [videoReady, setVideoReady] = useState(false);
 
   // ── 1. Validate token on mount ─────────────────────────────────────────────
   useEffect(() => {
@@ -48,6 +49,7 @@ export default function PhotoRegister() {
   const startCamera = useCallback(async () => {
     setCapturedBlob(null);
     setCapturedPreview(null);
+    setVideoReady(false);
     setStep('camera');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -79,16 +81,27 @@ export default function PhotoRegister() {
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    const size = Math.min(video.videoWidth, video.videoHeight);
+    // videoWidth/Height are 0 until the browser has decoded the first frame.
+    // Guard here and fall back to a safe default.
+    const w = video.videoWidth || video.clientWidth || 480;
+    const h = video.videoHeight || video.clientHeight || 480;
+    const size = Math.min(w, h);
+    if (size === 0) return;
+
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
-    const offsetX = (video.videoWidth - size) / 2;
-    const offsetY = (video.videoHeight - size) / 2;
+    const offsetX = (w - size) / 2;
+    const offsetY = (h - size) / 2;
     ctx.drawImage(video, offsetX, offsetY, size, size, 0, 0, size, size);
 
     canvas.toBlob(
       (blob) => {
+        if (!blob || blob.size < 100) {
+          // Canvas was still empty — retry once on next animation frame
+          requestAnimationFrame(capturePhoto);
+          return;
+        }
         setCapturedBlob(blob);
         setCapturedPreview(URL.createObjectURL(blob));
         stopCamera();
@@ -236,7 +249,7 @@ export default function PhotoRegister() {
             {capturedPreview ? (
               <img
                 src={capturedPreview}
-                alt="Captured selfie"
+                alt={invite?.driverName || 'Captured selfie'}
                 className="w-full aspect-square rounded-xl object-cover border border-surface-border"
               />
             ) : (
@@ -246,9 +259,16 @@ export default function PhotoRegister() {
                   autoPlay
                   playsInline
                   muted
+                  onLoadedMetadata={() => setVideoReady(true)}
+                  onCanPlay={() => setVideoReady(true)}
                   className="w-full aspect-square rounded-xl object-cover bg-gray-900"
                 />
                 <canvas ref={canvasRef} className="hidden" />
+                {!videoReady && (
+                  <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-gray-900">
+                    <Loader2 className="w-8 h-8 text-white/60 animate-spin" />
+                  </div>
+                )}
               </div>
             )}
 
@@ -256,10 +276,11 @@ export default function PhotoRegister() {
               {!capturedPreview && (
                 <button
                   onClick={capturePhoto}
-                  className="btn-primary w-full flex items-center justify-center gap-2"
+                  disabled={!videoReady}
+                  className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Camera className="w-4 h-4" />
-                  Capture
+                  {videoReady ? 'Capture' : 'Camera loading…'}
                 </button>
               )}
               {capturedPreview && (
