@@ -1,6 +1,12 @@
 Options -MultiViews
 RewriteEngine On
 
+# Ensure module assets are served with correct MIME types.
+AddType text/javascript .js .mjs
+AddType text/css .css
+AddType application/wasm .wasm
+AddType image/svg+xml .svg
+
 # Let real files and folders pass through unchanged.
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
