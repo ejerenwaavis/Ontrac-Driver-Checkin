@@ -55,6 +55,16 @@ Set values in `backend/.env`:
 - `ADMIN_EMAIL=...`
 - `ADMIN_PASSWORD=...`
 
+## Startup Safety Checks (Production)
+
+On startup, the backend now prints warnings in production if:
+
+- required env vars are missing
+- JWT secrets look like default/weak placeholders
+- `frontend/dist/index.html` is missing
+
+These checks are non-blocking warnings to speed up cPanel/LiteSpeed troubleshooting.
+
 ## Seed Admin User
 
 ```bash

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 
 import connectDB from './config/db.js';
 import { generalLimiter } from './middleware/rateLimiter.js';
+import { runProductionChecks } from './utils/productionChecks.js';
 
 import authRoutes from './routes/auth.js';
 import driverRoutes from './routes/drivers.js';
@@ -57,8 +58,14 @@ app.get('/api/health', (req, res) => {
 });
 
 // ─── Serve Frontend in Production ────────────────────────────────────────────
+const distPath = path.join(__dirname, '../../frontend/dist');
+
+runProductionChecks({
+  nodeEnv: process.env.NODE_ENV,
+  frontendDistPath: distPath,
+});
+
 if (process.env.NODE_ENV === 'production') {
-  const distPath = path.join(__dirname, '../../frontend/dist');
   app.use(express.static(distPath));
   app.get('*', (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
