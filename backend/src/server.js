@@ -22,6 +22,9 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+// ─── Trust Proxy (behind LiteSpeed / Passenger) ─────────────────────────────
+app.set('trust proxy', 1);
+
 // ─── Database ────────────────────────────────────────────────────────────────
 connectDB();
 
@@ -44,6 +47,12 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+// ─── Health Check (before rate limiter) ───────────────────────────────────────
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', ts: new Date().toISOString() });
+});
+
 app.use(generalLimiter);
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
@@ -51,11 +60,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/admissions', admissionRoutes);
 app.use('/api/users', userRoutes);
-
-// ─── Health Check ─────────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', ts: new Date().toISOString() });
-});
 
 // ─── Serve Frontend in Production ────────────────────────────────────────────
 const distPath = path.join(__dirname, '../../frontend/dist');
