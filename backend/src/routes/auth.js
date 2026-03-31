@@ -11,7 +11,6 @@ import {
   changePassword,
 } from '../controllers/authController.js';
 import authenticate from '../middleware/authenticate.js';
-import { authLimiter, mfaLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -33,10 +32,10 @@ const changePasswordRules = [
     .withMessage('New password must be at least 12 characters'),
 ];
 
-router.post('/login', authLimiter, loginRules, login);
+router.post('/login', loginRules, login);
 router.post('/setup-mfa', setupMfa);
-router.post('/confirm-mfa', mfaLimiter, totpRules, confirmMfa);
-router.post('/verify-mfa', mfaLimiter, totpRules, verifyMfa);
+router.post('/confirm-mfa', totpRules, confirmMfa);
+router.post('/verify-mfa', totpRules, verifyMfa);
 router.post('/refresh', refreshToken);
 router.post('/logout', authenticate, logout);
 router.get('/me', authenticate, getMe);

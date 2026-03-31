@@ -7,7 +7,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import connectDB from './config/db.js';
-import { generalLimiter } from './middleware/rateLimiter.js';
 import { runProductionChecks } from './utils/productionChecks.js';
 
 import authRoutes from './routes/auth.js';
@@ -48,12 +47,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
-// ─── Health Check (before rate limiter) ───────────────────────────────────────
+// ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', ts: new Date().toISOString() });
 });
-
-app.use(generalLimiter);
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);

@@ -11,7 +11,6 @@ import {
 } from '../controllers/driverController.js';
 import authenticate from '../middleware/authenticate.js';
 import authorize from '../middleware/authorize.js';
-import { uploadLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -31,7 +30,6 @@ router.patch('/:id/status', authorize('admin'), [
 router.post(
   '/upload',
   authorize('admin'),
-  uploadLimiter,
   (req, res, next) => {
     uploadMiddleware(req, res, (err) => {
       if (err) return res.status(400).json({ success: false, message: err.message });

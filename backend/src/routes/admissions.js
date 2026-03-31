@@ -8,7 +8,6 @@ import {
 } from '../controllers/admissionController.js';
 import authenticate from '../middleware/authenticate.js';
 import authorize from '../middleware/authorize.js';
-import { overrideLimiter } from '../middleware/rateLimiter.js';
 
 const router = Router();
 
@@ -25,7 +24,6 @@ router.post(
 
 router.post(
   '/override',
-  overrideLimiter,
   [
     body('driverNumber').trim().notEmpty().withMessage('Driver number required'),
     body('supervisorEmail').isEmail().normalizeEmail().withMessage('Valid supervisor email required'),
