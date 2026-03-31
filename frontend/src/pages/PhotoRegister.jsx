@@ -80,7 +80,44 @@ export default function PhotoRegister() {
     return () => stopCamera();
   }, [stopCamera]);
 
-  // Keep capturePhotoRef current to avoid stale closures in the detection loop
+  // ── 3. Capture frame from video ────────────────────────────────────────────
+  // Defined here (before detection loop) to avoid TDZ errors in the bundle.
+  const capturePhoto = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const w = video.videoWidth || video.clientWidth || 480;
+    const h = video.videoHeight || video.clientHeight || 480;
+    const size = Math.min(w, h);
+    if (size === 0) return;
+
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const offsetX = (w - size) / 2;
+    const offsetY = (h - size) / 2;
+    ctx.drawImage(video, offsetX, offsetY, size, size, 0, 0, size, size);
+
+    // Use toDataURL for preview — blob: URLs are blocked by production CSP (img-src 'self' data:)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob || blob.size < 100) {
+          requestAnimationFrame(capturePhoto);
+          return;
+        }
+        setCapturedBlob(blob);
+        setCapturedPreview(dataUrl);
+        setFaceStatus('inactive');
+        stopCamera();
+      },
+      'image/jpeg',
+      0.88
+    );
+  }, [stopCamera]);
+
+  // Keep capturePhotoRef in sync so the rAF detection loop always has a fresh reference
   useEffect(() => { capturePhotoRef.current = capturePhoto; }, [capturePhoto]);
 
   // ── Auto-capture via FaceDetector API (Chrome/Edge/Android — no dependencies) ──
@@ -159,44 +196,6 @@ export default function PhotoRegister() {
       detectLoopRef.current = null;
     };
   }, [step, capturedPreview, videoReady]);
-
-  // ── 3. Capture frame from video ────────────────────────────────────────────
-  const capturePhoto = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    // videoWidth/Height are 0 until the browser has decoded the first frame.
-    // Guard here and fall back to a safe default.
-    const w = video.videoWidth || video.clientWidth || 480;
-    const h = video.videoHeight || video.clientHeight || 480;
-    const size = Math.min(w, h);
-    if (size === 0) return;
-
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    const offsetX = (w - size) / 2;
-    const offsetY = (h - size) / 2;
-    ctx.drawImage(video, offsetX, offsetY, size, size, 0, 0, size, size);
-
-    // Use toDataURL for preview — blob: URLs are blocked by production CSP (img-src 'self' data:)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-    canvas.toBlob(
-      (blob) => {
-        if (!blob || blob.size < 100) {
-          requestAnimationFrame(capturePhoto);
-          return;
-        }
-        setCapturedBlob(blob);
-        setCapturedPreview(dataUrl);
-        setFaceStatus('inactive');
-        stopCamera();
-      },
-      'image/jpeg',
-      0.88
-    );
-  }, [stopCamera]);
 
   // ── 4. File input fallback ─────────────────────────────────────────────────
   const handleFileSelect = useCallback((e) => {
