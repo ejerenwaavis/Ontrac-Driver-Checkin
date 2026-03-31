@@ -77,11 +77,11 @@ export default function DriverPreview({ result, onAdmit, onOverride, onDismiss, 
           <img
             src={result.photoUrl}
             alt={result.driverName || 'Driver photo'}
-            className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-md"
+            className="w-48 h-48 rounded-full object-cover border-4 border-white shadow-md"
           />
         ) : (
-          <div className="w-32 h-32 rounded-full bg-gray-200 border-4 border-white shadow-md flex items-center justify-center">
-            <UserCircle className="w-20 h-20 text-gray-400" strokeWidth={1} />
+          <div className="w-48 h-48 rounded-full bg-gray-200 border-4 border-white shadow-md flex items-center justify-center">
+            <UserCircle className="w-28 h-28 text-gray-400" strokeWidth={1} />
           </div>
         )}
       </div>
