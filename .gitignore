@@ -11,6 +11,10 @@ frontend/.env
 # Build output
 backend/dist/
 
+# The .htaccess in frontend/dist is managed by cPanel Passenger on the server.
+# Tracking it in git would overwrite Passenger directives on every pull.
+frontend/dist/.htaccess
+
 # Logs
 *.log
 npm-debug.log*
