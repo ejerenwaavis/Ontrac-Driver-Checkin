@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { Camera, RefreshCw, CheckCircle, XCircle, Upload, ShieldCheck, Loader2 } from 'lucide-react';
+import * as faceapi from '@vladmandic/face-api';
 import api from '../services/api.js';
 
 // ── Tuning constants ───────────────────────────────────────────────────────────
@@ -12,23 +13,17 @@ const FACE_CENTER_TOL    = 0.22;  // fractional tolerance from viewport centre
 const FACE_MIN_RATIO     = 0.28;  // face height / viewport height — must be ≥
 const FACE_MAX_RATIO     = 0.78;  // face height / viewport height — must be ≤
 const MOTION_THRESHOLD   = 10;    // px shift between frames = "not still"
-const FA_SCRIPT_URL      = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';
-const FA_MODEL_URL       = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
+// Tiny face detector model files are in public/models/ (copied from node_modules at build time)
+const FA_MODEL_URL       = '/models';
 
-// Singleton promise — inject the script only once per page lifetime
-let faceApiScriptPromise = null;
-async function loadFaceApi() {
-  if (window.faceapi) return;
-  if (!faceApiScriptPromise) {
-    faceApiScriptPromise = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = FA_SCRIPT_URL;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('face-api script failed to load'));
-      document.head.appendChild(s);
-    });
+// Singleton promise — load models only once per page lifetime
+let modelLoadPromise = null;
+async function loadFaceApiModels() {
+  if (faceapi.nets.tinyFaceDetector.isLoaded) return;
+  if (!modelLoadPromise) {
+    modelLoadPromise = faceapi.nets.tinyFaceDetector.loadFromUri(FA_MODEL_URL);
   }
-  return faceApiScriptPromise;
+  return modelLoadPromise;
 }
 
 // ── Pure quality-check helpers (defined outside component — no re-render cost) ─
@@ -222,12 +217,7 @@ export default function PhotoRegister() {
     (async () => {
       setModelStatus('loading');
       try {
-        await loadFaceApi();
-        if (cancelled) return;
-        const fa = window.faceapi;
-        if (!fa.nets.tinyFaceDetector.isLoaded) {
-          await fa.nets.tinyFaceDetector.loadFromUri(FA_MODEL_URL);
-        }
+        await loadFaceApiModels();
         if (!cancelled) setModelStatus('ready');
       } catch {
         if (!cancelled) setModelStatus('error');
@@ -251,9 +241,8 @@ export default function PhotoRegister() {
       const canvas = canvasRef.current;
       if (!video || !video.videoWidth || isCapturingRef.current) return;
 
-      const fa        = window.faceapi;
-      const detection = await fa
-        .detectSingleFace(video, new fa.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }))
+      const detection = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }))
         .catch(() => null);
 
       if (!detection) {
