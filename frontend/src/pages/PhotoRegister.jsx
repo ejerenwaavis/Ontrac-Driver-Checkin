@@ -21,6 +21,11 @@ export default function PhotoRegister() {
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
   const [videoReady, setVideoReady] = useState(false);
+  const [faceStatus, setFaceStatus] = useState('inactive'); // 'inactive'|'searching'|'aligned'
+  const detectLoopRef = useRef(null);
+  const faceDetectorRef = useRef(null);
+  const alignedSinceRef = useRef(null);
+  const capturePhotoRef = useRef(null);
 
   // ── 1. Validate token on mount ─────────────────────────────────────────────
   useEffect(() => {
@@ -75,6 +80,86 @@ export default function PhotoRegister() {
     return () => stopCamera();
   }, [stopCamera]);
 
+  // Keep capturePhotoRef current to avoid stale closures in the detection loop
+  useEffect(() => { capturePhotoRef.current = capturePhoto; }, [capturePhoto]);
+
+  // ── Auto-capture via FaceDetector API (Chrome/Edge/Android — no dependencies) ──
+  // Falls back silently to manual capture when the API is unavailable (iOS/Firefox).
+  useEffect(() => {
+    // Only run while camera is live and no photo captured yet
+    if (step !== 'camera' || capturedPreview || !videoReady) {
+      if (detectLoopRef.current != null) {
+        cancelAnimationFrame(detectLoopRef.current);
+        detectLoopRef.current = null;
+      }
+      return;
+    }
+
+    if (!window.FaceDetector) {
+      setFaceStatus('inactive'); // API unavailable — manual capture only
+      return;
+    }
+
+    if (!faceDetectorRef.current) {
+      try {
+        faceDetectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+      } catch {
+        setFaceStatus('inactive');
+        return;
+      }
+    }
+
+    setFaceStatus('searching');
+    alignedSinceRef.current = null;
+
+    let rafId;
+    const poll = async () => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth) {
+        rafId = requestAnimationFrame(poll);
+        detectLoopRef.current = rafId;
+        return;
+      }
+      try {
+        const faces = await faceDetectorRef.current.detect(video);
+        const vw = video.videoWidth;
+        const vh = video.videoHeight;
+        if (faces.length === 1) {
+          const bb = faces[0].boundingBox;
+          const cx = (bb.x + bb.width / 2) / vw;
+          const cy = (bb.y + bb.height / 2) / vh;
+          const centered = Math.abs(cx - 0.5) < 0.22 && Math.abs(cy - 0.48) < 0.25;
+          const sized = bb.height / vh > 0.22;
+          if (centered && sized) {
+            setFaceStatus('aligned');
+            if (!alignedSinceRef.current) alignedSinceRef.current = Date.now();
+            else if (Date.now() - alignedSinceRef.current >= 1400) {
+              capturePhotoRef.current?.();
+              return; // stop loop; capturedPreview change will cancel via deps
+            }
+          } else {
+            alignedSinceRef.current = null;
+            setFaceStatus('searching');
+          }
+        } else {
+          alignedSinceRef.current = null;
+          setFaceStatus('searching');
+        }
+      } catch { /* skip frame on detection error */ }
+
+      rafId = requestAnimationFrame(poll);
+      detectLoopRef.current = rafId;
+    };
+
+    rafId = requestAnimationFrame(poll);
+    detectLoopRef.current = rafId;
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      detectLoopRef.current = null;
+    };
+  }, [step, capturedPreview, videoReady]);
+
   // ── 3. Capture frame from video ────────────────────────────────────────────
   const capturePhoto = useCallback(() => {
     const video = videoRef.current;
@@ -95,15 +180,17 @@ export default function PhotoRegister() {
     const offsetY = (h - size) / 2;
     ctx.drawImage(video, offsetX, offsetY, size, size, 0, 0, size, size);
 
+    // Use toDataURL for preview — blob: URLs are blocked by production CSP (img-src 'self' data:)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
     canvas.toBlob(
       (blob) => {
         if (!blob || blob.size < 100) {
-          // Canvas was still empty — retry once on next animation frame
           requestAnimationFrame(capturePhoto);
           return;
         }
         setCapturedBlob(blob);
-        setCapturedPreview(URL.createObjectURL(blob));
+        setCapturedPreview(dataUrl);
+        setFaceStatus('inactive');
         stopCamera();
       },
       'image/jpeg',
@@ -116,8 +203,11 @@ export default function PhotoRegister() {
     const file = e.target.files?.[0];
     if (!file) return;
     setCapturedBlob(file);
-    setCapturedPreview(URL.createObjectURL(file));
-    setStep('camera'); // reuse camera step for preview/retake
+    // Use FileReader so the preview is a data: URL (allowed by CSP img-src)
+    const reader = new FileReader();
+    reader.onload = (ev) => setCapturedPreview(ev.target.result);
+    reader.readAsDataURL(file);
+    setStep('camera');
   }, []);
 
   // ── 5. Driver number submit ────────────────────────────────────────────────
@@ -243,13 +333,13 @@ export default function PhotoRegister() {
         {step === 'camera' && (
           <div className="card p-4 space-y-4">
             <h2 className="text-lg font-bold text-gray-900 text-center">
-              {capturedPreview ? 'Looks good?' : 'Position your face'}
+              {capturedPreview ? 'Looks good?' : faceStatus !== 'inactive' ? 'Center your face' : 'Position your face'}
             </h2>
 
             {capturedPreview ? (
               <img
                 src={capturedPreview}
-                alt={invite?.driverName || 'Captured selfie'}
+                alt="Captured selfie"
                 className="w-full aspect-square rounded-xl object-cover border border-surface-border"
               />
             ) : (
@@ -269,7 +359,36 @@ export default function PhotoRegister() {
                     <Loader2 className="w-8 h-8 text-white/60 animate-spin" />
                   </div>
                 )}
+                {/* Face alignment guide — oval with color feedback */}
+                {videoReady && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none rounded-xl overflow-hidden">
+                    <div className={`w-44 h-52 rounded-full border-4 transition-all duration-300 ${
+                      faceStatus === 'aligned'
+                        ? 'border-green-400 shadow-[0_0_24px_rgba(74,222,128,0.6)]'
+                        : faceStatus === 'searching'
+                        ? 'border-amber-400'
+                        : 'border-white/40'
+                    }`} />
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Auto-capture status hint */}
+            {!capturedPreview && faceStatus === 'searching' && (
+              <p className="text-center text-xs text-amber-500 font-medium -mt-1">
+                Move your face into the circle
+              </p>
+            )}
+            {!capturedPreview && faceStatus === 'aligned' && (
+              <p className="text-center text-xs text-green-500 font-medium -mt-1">
+                ✓ Hold still — capturing…
+              </p>
+            )}
+            {!capturedPreview && faceStatus === 'inactive' && videoReady && (
+              <p className="text-center text-xs text-gray-400 -mt-1">
+                Position your face in the circle
+              </p>
             )}
 
             <div className="space-y-2">
@@ -280,7 +399,7 @@ export default function PhotoRegister() {
                   className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Camera className="w-4 h-4" />
-                  {videoReady ? 'Capture' : 'Camera loading…'}
+                  {!videoReady ? 'Camera loading…' : faceStatus !== 'inactive' ? 'Capture Manually' : 'Capture'}
                 </button>
               )}
               {capturedPreview && (
