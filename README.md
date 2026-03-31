@@ -32,6 +32,27 @@ npm run start:prod
 
 Then reverse proxy your domain to `127.0.0.1:4000` with Nginx.
 
+## Alternative: Prebuilt Frontend In Git
+
+If your hosting environment is unreliable for server-side builds, you can build locally and commit
+`frontend/dist` so a server `git pull` includes ready-to-serve static assets.
+
+Recommended flow:
+
+```bash
+# Local machine
+npm run build --prefix frontend
+git add frontend/dist .
+git commit -m "Update frontend dist"
+git push
+
+# Hosting server
+git pull
+# restart Node app
+```
+
+This avoids ENOENT errors for missing `frontend/dist/index.html` after deploy.
+
 ## PM2 (Recommended)
 
 Use the provided `ecosystem.config.cjs`:

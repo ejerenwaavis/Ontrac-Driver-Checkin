@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OnTrac placeholder shield icon">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#CC0000" />
+  <path d="M32 12c5.3 4.6 13 8 19 8v12c0 13.2-9.7 19.8-18.5 22.9a1.8 1.8 0 0 1-1 0C22.7 51.8 13 45.2 13 32V20c6 0 13.7-3.4 19-8z" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m24 32 6 6 10-11" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
