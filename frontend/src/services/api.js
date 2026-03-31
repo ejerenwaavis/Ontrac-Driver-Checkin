@@ -1,7 +1,16 @@
 import axios from 'axios';
 import { STORAGE_KEYS, clearLegacyAuthKeys } from '../constants/storageKeys.js';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const envApiBase = import.meta.env.VITE_API_URL || '';
+
+// If a public deployment was built with localhost API by mistake, force same-origin API.
+const shouldForceSameOrigin =
+  typeof window !== 'undefined'
+  && window.location.hostname !== 'localhost'
+  && window.location.hostname !== '127.0.0.1'
+  && /localhost|127\.0\.0\.1/i.test(envApiBase);
+
+const API_BASE = shouldForceSameOrigin ? '' : envApiBase;
 
 const api = axios.create({
   baseURL: `${API_BASE}/api`,
