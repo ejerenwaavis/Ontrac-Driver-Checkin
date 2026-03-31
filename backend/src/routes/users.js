@@ -7,6 +7,8 @@ import {
   deactivateUser,
   activateUser,
   resetUserMfa,
+  deleteUser,
+  resetPassword,
 } from '../controllers/userController.js';
 import authenticate from '../middleware/authenticate.js';
 import authorize from '../middleware/authorize.js';
@@ -27,11 +29,17 @@ const updateRules = [
   body('role').optional().isIn(['admin', 'supervisor', 'clerk']).withMessage('Invalid role'),
 ];
 
+const resetPasswordRules = [
+  body('newPassword').isLength({ min: 12 }).withMessage('Password must be at least 12 characters'),
+];
+
 router.get('/', getUsers);
 router.post('/', createRules, createUser);
 router.patch('/:id', updateRules, updateUser);
 router.patch('/:id/deactivate', deactivateUser);
 router.patch('/:id/activate', activateUser);
 router.patch('/:id/reset-mfa', resetUserMfa);
+router.patch('/:id/reset-password', resetPasswordRules, resetPassword);
+router.delete('/:id', deleteUser);
 
 export default router;

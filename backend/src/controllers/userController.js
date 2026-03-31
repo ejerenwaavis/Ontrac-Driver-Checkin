@@ -179,3 +179,67 @@ export const resetUserMfa = async (req, res, next) => {
     next(err);
   }
 };
+
+// ── DELETE /api/users/:id ────────────────────────────────────────────────────
+export const deleteUser = async (req, res, next) => {
+  try {
+    if (req.params.id === req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'You cannot delete your own account' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    if (user.isActive) {
+      return res.status(400).json({ success: false, message: 'User must be deactivated before deletion' });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+
+    await createAuditLog('USER_DELETED', {
+      userId: req.user._id, userEmail: req.user.email, userRole: req.user.role,
+      resource: 'User', resourceId: req.params.id,
+      details: { name: user.name, email: user.email, role: user.role },
+      ipAddress: getClientIp(req), userAgent: getUserAgent(req),
+    });
+
+    return res.json({ success: true, message: 'User permanently deleted' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── PATCH /api/users/:id/reset-password ─────────────────────────────────────
+export const resetPassword = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    if (req.params.id === req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'Use the change-password endpoint for your own account' });
+    }
+
+    const { newPassword } = req.body;
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    user.password = newPassword;
+    user.forcePasswordChange = true;
+    user.refreshTokenHash = undefined;
+    await user.save();
+
+    await createAuditLog('PASSWORD_RESET_BY_ADMIN', {
+      userId: req.user._id, userEmail: req.user.email, userRole: req.user.role,
+      resource: 'User', resourceId: user._id.toString(),
+      details: { targetEmail: user.email },
+      ipAddress: getClientIp(req), userAgent: getUserAgent(req),
+    });
+
+    return res.json({ success: true, message: 'Password reset. User must change it on next login.' });
+  } catch (err) {
+    next(err);
+  }
+};

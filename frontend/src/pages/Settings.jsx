@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation } from '@tanstack/react-query';
-import { Eye, EyeOff, Loader2, KeyRound, ShieldCheck, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Eye, EyeOff, Loader2, KeyRound, ShieldCheck, User, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth.js';
 import api from '../services/api.js';
 import toast from 'react-hot-toast';
@@ -9,7 +10,8 @@ import toast from 'react-hot-toast';
 const roleBadge = { admin: 'badge-admin', supervisor: 'badge-supervisor', clerk: 'badge-clerk' };
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
+  const navigate = useNavigate();
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
 
@@ -20,12 +22,26 @@ export default function Settings() {
     onSuccess: () => {
       toast.success('Password changed successfully');
       reset();
+      if (user?.forcePasswordChange) {
+        const updated = { ...user, forcePasswordChange: false };
+        setUser(updated);
+        navigate('/scanner', { replace: true });
+      }
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to change password'),
   });
 
   return (
     <div className="px-4 py-6 max-w-2xl mx-auto space-y-6">
+      {user?.forcePasswordChange && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Password change required</p>
+            <p className="text-xs text-amber-700 mt-0.5">Your administrator has reset your password. Please set a new password below to continue.</p>
+          </div>
+        </div>
+      )}
       <div>
         <h1 className="text-xl font-bold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500 mt-0.5">Account preferences and security</p>

@@ -14,5 +14,10 @@ export default function ProtectedRoute({ roles }) {
     return <Navigate to="/scanner" replace />;
   }
 
+  // Force password change blocks access to everything except /settings
+  if (user.forcePasswordChange && location.pathname !== '/settings') {
+    return <Navigate to="/settings" replace />;
+  }
+
   return <Outlet />;
 }

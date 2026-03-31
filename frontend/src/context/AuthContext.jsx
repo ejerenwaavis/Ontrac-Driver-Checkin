@@ -56,6 +56,11 @@ export function AuthProvider({ children }) {
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(userData));
   }, []);
 
+  const updateUser = useCallback((userData) => {
+    setUser(userData);
+    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(userData));
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.post('/auth/logout');
@@ -64,7 +69,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, setUser: updateUser }}>
       {children}
     </AuthContext.Provider>
   );

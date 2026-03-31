@@ -144,6 +144,7 @@ export const confirmMfa = async (req, res, next) => {
         email: user.email,
         role: user.role,
         mfaEnabled: user.mfaEnabled,
+        forcePasswordChange: user.forcePasswordChange || false,
       },
     });
   } catch (err) {
@@ -208,6 +209,7 @@ export const verifyMfa = async (req, res, next) => {
         email: user.email,
         role: user.role,
         mfaEnabled: user.mfaEnabled,
+        forcePasswordChange: user.forcePasswordChange || false,
       },
     });
   } catch (err) {
@@ -300,6 +302,7 @@ export const changePassword = async (req, res, next) => {
     }
 
     user.password = newPassword;
+    user.forcePasswordChange = false;
     await user.save();
 
     await createAuditLog('PASSWORD_CHANGED', {

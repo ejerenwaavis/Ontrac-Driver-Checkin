@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import {
   UserPlus, Users, Loader2, X, Eye, EyeOff,
-  UserCheck, UserX, Pencil, ShieldOff
+  UserCheck, UserX, Pencil, ShieldOff, Trash2, KeyRound
 } from 'lucide-react';
 import api from '../services/api.js';
 import toast from 'react-hot-toast';
@@ -130,10 +130,63 @@ function UserModal({ editUser, onClose, onSaved }) {
   );
 }
 
+function ResetPasswordModal({ targetUser, onClose, onSaved }) {
+  const [showPass, setShowPass] = useState(false);
+
+  const { register, handleSubmit, formState: { errors } } = useForm();
+
+  const mutation = useMutation({
+    mutationFn: (data) => api.patch(`/users/${targetUser._id}/reset-password`, data),
+    onSuccess: () => {
+      toast.success(`Password reset for ${targetUser.name}. They must change it on next login.`);
+      onSaved();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to reset password'),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-modal animate-slide-up">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border">
+          <h2 className="text-base font-bold text-gray-900">Reset Password</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-muted text-gray-500"><X className="w-4 h-4" /></button>
+        </div>
+        <form onSubmit={handleSubmit(mutation.mutate)} className="p-5 space-y-4">
+          <p className="text-sm text-gray-600">
+            Set a new temporary password for <strong>{targetUser.name}</strong> ({targetUser.email}).
+            They will be required to change it on their next login.
+          </p>
+          <div>
+            <label className="label">New password <span className="text-gray-400 font-normal text-xs">(min 12 chars)</span></label>
+            <div className="relative">
+              <input type={showPass ? 'text' : 'password'} className="input pr-10" placeholder="••••••••••••"
+                {...register('newPassword', { required: 'Password required', minLength: { value: 12, message: 'Min 12 characters' } })} />
+              <button type="button" onClick={() => setShowPass((v) => !v)}
+                className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600">
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+            {errors.newPassword && <p className="mt-1 text-xs text-brand-600">{errors.newPassword.message}</p>}
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+            <button type="submit" disabled={mutation.isPending} className="btn-primary flex-1">
+              {mutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+              {mutation.isPending ? 'Resetting…' : 'Reset password'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function UsersPage() {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
+  const [resetPwUser, setResetPwUser] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['users'],
@@ -152,10 +205,24 @@ export default function UsersPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
   });
 
+  const deleteUser = useMutation({
+    mutationFn: (id) => api.delete(`/users/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success('User permanently deleted'); },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to delete user'),
+  });
+
+  const handleDelete = (u) => {
+    const confirmed = window.confirm(`Permanently delete ${u.name} (${u.email})? This cannot be undone.`);
+    if (!confirmed) return;
+    deleteUser.mutate(u._id);
+  };
+
   const users = data?.users || [];
 
   const handleModalClose = () => { setShowModal(false); setEditUser(null); };
   const handleSaved = () => { handleModalClose(); queryClient.invalidateQueries({ queryKey: ['users'] }); };
+  const handleResetPwClose = () => setResetPwUser(null);
+  const handleResetPwSaved = () => { handleResetPwClose(); queryClient.invalidateQueries({ queryKey: ['users'] }); };
 
   return (
     <div className="px-4 py-6 max-w-4xl mx-auto space-y-5">
@@ -230,6 +297,13 @@ export default function UsersPage() {
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
+                        <button
+                          onClick={() => setResetPwUser(u)}
+                          className="p-1.5 rounded hover:bg-surface-muted text-gray-400 hover:text-amber-600"
+                          title="Reset password"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
                         {u.isActive ? (
                           <button
                             onClick={() => deactivate.mutate(u._id)}
@@ -240,14 +314,24 @@ export default function UsersPage() {
                             <UserX className="w-3.5 h-3.5" />
                           </button>
                         ) : (
-                          <button
-                            onClick={() => activate.mutate(u._id)}
-                            disabled={activate.isPending}
-                            className="p-1.5 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
-                            title="Reactivate"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                          </button>
+                          <>
+                            <button
+                              onClick={() => activate.mutate(u._id)}
+                              disabled={activate.isPending}
+                              className="p-1.5 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
+                              title="Reactivate"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(u)}
+                              disabled={deleteUser.isPending}
+                              className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
+                              title="Delete permanently"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
@@ -261,6 +345,10 @@ export default function UsersPage() {
 
       {showModal && (
         <UserModal editUser={editUser} onClose={handleModalClose} onSaved={handleSaved} />
+      )}
+
+      {resetPwUser && (
+        <ResetPasswordModal targetUser={resetPwUser} onClose={handleResetPwClose} onSaved={handleResetPwSaved} />
       )}
     </div>
   );
