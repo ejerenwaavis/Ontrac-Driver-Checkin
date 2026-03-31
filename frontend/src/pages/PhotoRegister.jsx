@@ -3,29 +3,111 @@ import { useParams } from 'react-router-dom';
 import { Camera, RefreshCw, CheckCircle, XCircle, Upload, ShieldCheck, Loader2 } from 'lucide-react';
 import api from '../services/api.js';
 
-// Steps: 'loading' | 'invalid' | 'form' | 'camera' | 'uploading' | 'success' | 'error'
+// ── Tuning constants ───────────────────────────────────────────────────────────
+const READY_HOLD_MS      = 2000;  // ms all checks must pass before auto-trigger
+const DETECTION_INTERVAL = 200;   // ms between face-api detection runs
+const BRIGHTNESS_MIN     = 55;    // 0-255 — reject if too dark
+const BRIGHTNESS_MAX     = 215;   // 0-255 — reject if blown out
+const FACE_CENTER_TOL    = 0.22;  // fractional tolerance from viewport centre
+const FACE_MIN_RATIO     = 0.28;  // face height / viewport height — must be ≥
+const FACE_MAX_RATIO     = 0.78;  // face height / viewport height — must be ≤
+const MOTION_THRESHOLD   = 10;    // px shift between frames = "not still"
+const FA_SCRIPT_URL      = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js';
+const FA_MODEL_URL       = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
 
+// Singleton promise — inject the script only once per page lifetime
+let faceApiScriptPromise = null;
+async function loadFaceApi() {
+  if (window.faceapi) return;
+  if (!faceApiScriptPromise) {
+    faceApiScriptPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = FA_SCRIPT_URL;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('face-api script failed to load'));
+      document.head.appendChild(s);
+    });
+  }
+  return faceApiScriptPromise;
+}
+
+// ── Pure quality-check helpers (defined outside component — no re-render cost) ─
+function checkCentered(box, vw, vh) {
+  const cx = (box.x + box.width  / 2) / vw;
+  const cy = (box.y + box.height / 2) / vh;
+  return Math.abs(cx - 0.5) < FACE_CENTER_TOL && Math.abs(cy - 0.48) < FACE_CENTER_TOL;
+}
+function checkSize(box, vh) {
+  const r = box.height / vh;
+  return r >= FACE_MIN_RATIO && r <= FACE_MAX_RATIO;
+}
+function checkLighting(video, canvas) {
+  const n = 60;
+  canvas.width = canvas.height = n;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, (video.videoWidth - n) / 2, (video.videoHeight - n) / 2, n, n, 0, 0, n, n);
+  const d = ctx.getImageData(0, 0, n, n).data;
+  let t = 0;
+  for (let i = 0; i < d.length; i += 4)
+    t += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+  const avg = t / (n * n);
+  return avg >= BRIGHTNESS_MIN && avg <= BRIGHTNESS_MAX;
+}
+function checkStill(box, prevRef) {
+  if (!prevRef.current) { prevRef.current = box; return false; }
+  const dx = Math.abs(box.x - prevRef.current.x);
+  const dy = Math.abs(box.y - prevRef.current.y);
+  return dx < MOTION_THRESHOLD && dy < MOTION_THRESHOLD;
+}
+function buildHint(c) {
+  if (!c.face)   return 'Position your face in the oval';
+  if (!c.size)   return 'Move closer or further from the camera';
+  if (!c.center) return 'Centre your face in the oval';
+  if (!c.light)  return 'Improve lighting — too dark or bright';
+  if (!c.still)  return 'Hold still…';
+  return 'Hold still — preparing…';
+}
+
+const PILL_DEFS = [
+  { key: 'face',   icon: '👤', label: 'Face detected' },
+  { key: 'center', icon: '🎯', label: 'Centred' },
+  { key: 'size',   icon: '📐', label: 'Good size' },
+  { key: 'light',  icon: '💡', label: 'Lighting OK' },
+  { key: 'still',  icon: '🧘', label: 'Hold still' },
+];
+
+const EMPTY_CHECKS = { face: false, center: false, size: false, light: false, still: false };
+
+// Steps: 'loading' | 'invalid' | 'form' | 'camera' | 'uploading' | 'success' | 'error'
 export default function PhotoRegister() {
   const { token } = useParams();
-  const [step, setStep] = useState('loading');
-  const [invite, setInvite] = useState(null);
-  const [driverNumber, setDriverNumber] = useState('');
-  const [dnError, setDnError] = useState('');
-  const [capturedBlob, setCapturedBlob] = useState(null);
+  const [step, setStep]                       = useState('loading');
+  const [invite, setInvite]                   = useState(null);
+  const [driverNumber, setDriverNumber]       = useState('');
+  const [dnError, setDnError]                 = useState('');
+  const [capturedBlob, setCapturedBlob]       = useState(null);
   const [capturedPreview, setCapturedPreview] = useState(null);
-  const [successName, setSuccessName] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  const [successName, setSuccessName]         = useState('');
+  const [errorMsg, setErrorMsg]               = useState('');
 
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const streamRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const [videoReady, setVideoReady] = useState(false);
-  const [faceStatus, setFaceStatus] = useState('inactive'); // 'inactive'|'searching'|'aligned'
-  const detectLoopRef = useRef(null);
-  const faceDetectorRef = useRef(null);
-  const alignedSinceRef = useRef(null);
-  const capturePhotoRef = useRef(null);
+  // ── Camera refs ──────────────────────────────────────────────────────────
+  const videoRef             = useRef(null);
+  const canvasRef            = useRef(null);
+  const streamRef            = useRef(null);
+  const fileInputRef         = useRef(null);
+  const detectionIntervalRef = useRef(null);
+  const readyStartRef        = useRef(null);   // timestamp when all checks first passed
+  const prevFaceBoxRef       = useRef(null);   // last bounding box for stillness check
+  const isCapturingRef       = useRef(false);  // prevents double-trigger during countdown
+  const capturePhotoRef      = useRef(null);   // kept in sync, used by triggerAutoCapture
+
+  // ── Camera state ─────────────────────────────────────────────────────────
+  const [videoReady, setVideoReady]     = useState(false);
+  const [modelStatus, setModelStatus]   = useState('idle'); // 'idle'|'loading'|'ready'|'error'
+  const [checks, setChecks]             = useState(EMPTY_CHECKS);
+  const [countdown, setCountdown]       = useState(null);  // null | 3 | 2 | 1
+  const [showFlash, setShowFlash]       = useState(false);
+  const [hint, setHint]                 = useState('');
 
   // ── 1. Validate token on mount ─────────────────────────────────────────────
   useEffect(() => {
@@ -50,28 +132,32 @@ export default function PhotoRegister() {
     })();
   }, [token]);
 
-  // ── 2. Open camera ─────────────────────────────────────────────────────────
+  // ── 2. Open camera ────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
     setCapturedBlob(null);
     setCapturedPreview(null);
     setVideoReady(false);
+    setChecks(EMPTY_CHECKS);
+    setHint('');
+    setCountdown(null);
+    isCapturingRef.current = false;
+    readyStartRef.current  = null;
+    prevFaceBoxRef.current = null;
     setStep('camera');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } },
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      if (videoRef.current) videoRef.current.srcObject = stream;
     } catch {
-      // Fall back to file input if camera unavailable
       stopCamera();
       fileInputRef.current?.click();
     }
   }, []);
 
   const stopCamera = useCallback(() => {
+    clearInterval(detectionIntervalRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
@@ -80,124 +166,135 @@ export default function PhotoRegister() {
     return () => stopCamera();
   }, [stopCamera]);
 
-  // ── 3. Capture frame from video ────────────────────────────────────────────
-  // Defined here (before detection loop) to avoid TDZ errors in the bundle.
+  // ── 3. capturePhoto — defined before effects to prevent TDZ after minification ─
   const capturePhoto = useCallback(() => {
-    const video = videoRef.current;
+    const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    const w = video.videoWidth || video.clientWidth || 480;
-    const h = video.videoHeight || video.clientHeight || 480;
+    const w    = video.videoWidth  || video.clientWidth  || 480;
+    const h    = video.videoHeight || video.clientHeight || 480;
     const size = Math.min(w, h);
     if (size === 0) return;
 
-    canvas.width = size;
+    canvas.width  = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
-    const offsetX = (w - size) / 2;
-    const offsetY = (h - size) / 2;
-    ctx.drawImage(video, offsetX, offsetY, size, size, 0, 0, size, size);
+    ctx.drawImage(video, (w - size) / 2, (h - size) / 2, size, size, 0, 0, size, size);
 
-    // Use toDataURL for preview — blob: URLs are blocked by production CSP (img-src 'self' data:)
+    // data: URL — blob: is blocked by production helmet CSP (img-src 'self' data:)
     const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
     canvas.toBlob(
       (blob) => {
-        if (!blob || blob.size < 100) {
-          requestAnimationFrame(capturePhoto);
-          return;
-        }
+        if (!blob || blob.size < 100) { requestAnimationFrame(capturePhoto); return; }
         setCapturedBlob(blob);
         setCapturedPreview(dataUrl);
-        setFaceStatus('inactive');
         stopCamera();
       },
       'image/jpeg',
-      0.88
+      0.88,
     );
   }, [stopCamera]);
 
-  // Keep capturePhotoRef in sync so the rAF detection loop always has a fresh reference
+  // Keep capturePhotoRef current so setInterval closures always call the latest version
   useEffect(() => { capturePhotoRef.current = capturePhoto; }, [capturePhoto]);
 
-  // ── Auto-capture via FaceDetector API (Chrome/Edge/Android — no dependencies) ──
-  // Falls back silently to manual capture when the API is unavailable (iOS/Firefox).
+  // ── triggerAutoCapture: countdown 3→2→1 then flash → capture ────────────
+  const triggerAutoCapture = useCallback(async () => {
+    if (isCapturingRef.current) return;
+    isCapturingRef.current = true;
+    clearInterval(detectionIntervalRef.current);
+    for (let i = 3; i >= 1; i--) {
+      setCountdown(i);
+      await new Promise((r) => setTimeout(r, 900));
+    }
+    setCountdown(null);
+    setShowFlash(true);
+    await new Promise((r) => setTimeout(r, 80));
+    setShowFlash(false);
+    capturePhotoRef.current?.();
+  }, []);
+
+  // ── 4. Load face-api script + tinyFaceDetector model on entering camera ──
   useEffect(() => {
-    // Only run while camera is live and no photo captured yet
-    if (step !== 'camera' || capturedPreview || !videoReady) {
-      if (detectLoopRef.current != null) {
-        cancelAnimationFrame(detectLoopRef.current);
-        detectLoopRef.current = null;
-      }
-      return;
-    }
-
-    if (!window.FaceDetector) {
-      setFaceStatus('inactive'); // API unavailable — manual capture only
-      return;
-    }
-
-    if (!faceDetectorRef.current) {
+    if (step !== 'camera' || capturedPreview) return;
+    let cancelled = false;
+    (async () => {
+      setModelStatus('loading');
       try {
-        faceDetectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
-      } catch {
-        setFaceStatus('inactive');
-        return;
-      }
-    }
-
-    setFaceStatus('searching');
-    alignedSinceRef.current = null;
-
-    let rafId;
-    const poll = async () => {
-      const video = videoRef.current;
-      if (!video || !video.videoWidth) {
-        rafId = requestAnimationFrame(poll);
-        detectLoopRef.current = rafId;
-        return;
-      }
-      try {
-        const faces = await faceDetectorRef.current.detect(video);
-        const vw = video.videoWidth;
-        const vh = video.videoHeight;
-        if (faces.length === 1) {
-          const bb = faces[0].boundingBox;
-          const cx = (bb.x + bb.width / 2) / vw;
-          const cy = (bb.y + bb.height / 2) / vh;
-          const centered = Math.abs(cx - 0.5) < 0.22 && Math.abs(cy - 0.48) < 0.25;
-          const sized = bb.height / vh > 0.22;
-          if (centered && sized) {
-            setFaceStatus('aligned');
-            if (!alignedSinceRef.current) alignedSinceRef.current = Date.now();
-            else if (Date.now() - alignedSinceRef.current >= 1400) {
-              capturePhotoRef.current?.();
-              return; // stop loop; capturedPreview change will cancel via deps
-            }
-          } else {
-            alignedSinceRef.current = null;
-            setFaceStatus('searching');
-          }
-        } else {
-          alignedSinceRef.current = null;
-          setFaceStatus('searching');
+        await loadFaceApi();
+        if (cancelled) return;
+        const fa = window.faceapi;
+        if (!fa.nets.tinyFaceDetector.isLoaded) {
+          await fa.nets.tinyFaceDetector.loadFromUri(FA_MODEL_URL);
         }
-      } catch { /* skip frame on detection error */ }
+        if (!cancelled) setModelStatus('ready');
+      } catch {
+        if (!cancelled) setModelStatus('error');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [step, capturedPreview]);
 
-      rafId = requestAnimationFrame(poll);
-      detectLoopRef.current = rafId;
-    };
+  // ── 5. Detection loop — runs once models ready & video is playing ─────────
+  useEffect(() => {
+    if (step !== 'camera' || capturedPreview || modelStatus !== 'ready' || !videoReady) {
+      clearInterval(detectionIntervalRef.current);
+      return;
+    }
+    readyStartRef.current  = null;
+    prevFaceBoxRef.current = null;
+    setHint('Looking for your face…');
 
-    rafId = requestAnimationFrame(poll);
-    detectLoopRef.current = rafId;
+    detectionIntervalRef.current = setInterval(async () => {
+      const video  = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !video.videoWidth || isCapturingRef.current) return;
 
-    return () => {
-      cancelAnimationFrame(rafId);
-      detectLoopRef.current = null;
-    };
-  }, [step, capturedPreview, videoReady]);
+      const fa        = window.faceapi;
+      const detection = await fa
+        .detectSingleFace(video, new fa.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }))
+        .catch(() => null);
 
-  // ── 4. File input fallback ─────────────────────────────────────────────────
+      if (!detection) {
+        readyStartRef.current  = null;
+        prevFaceBoxRef.current = null;
+        setChecks(EMPTY_CHECKS);
+        setHint('No face detected — look at the camera');
+        return;
+      }
+
+      const { box } = detection;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const c = {
+        face:   true,
+        center: checkCentered(box, vw, vh),
+        size:   checkSize(box, vh),
+        light:  checkLighting(video, canvas),
+        still:  checkStill(box, prevFaceBoxRef),
+      };
+      prevFaceBoxRef.current = box;
+      setChecks(c);
+
+      const allGood = c.face && c.center && c.size && c.light && c.still;
+      if (allGood) {
+        if (!readyStartRef.current) readyStartRef.current = Date.now();
+        const remaining = READY_HOLD_MS - (Date.now() - readyStartRef.current);
+        if (remaining <= 0) {
+          triggerAutoCapture();
+        } else {
+          setHint(`Hold still — ${(remaining / 1000).toFixed(1)}s`);
+        }
+      } else {
+        readyStartRef.current = null;
+        setHint(buildHint(c));
+      }
+    }, DETECTION_INTERVAL);
+
+    return () => clearInterval(detectionIntervalRef.current);
+  }, [step, capturedPreview, modelStatus, videoReady, triggerAutoCapture]);
+
+  // ── 6. File input fallback ────────────────────────────────────────────────
   const handleFileSelect = useCallback((e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -328,100 +425,180 @@ export default function PhotoRegister() {
           </div>
         )}
 
-        {/* Camera / preview */}
-        {step === 'camera' && (
-          <div className="card p-4 space-y-4">
-            <h2 className="text-lg font-bold text-gray-900 text-center">
-              {capturedPreview ? 'Looks good?' : faceStatus !== 'inactive' ? 'Center your face' : 'Position your face'}
-            </h2>
+        {/* Camera */}
+        {step === 'camera' && (() => {
+          const allGood = checks.face && checks.center && checks.size && checks.light && checks.still;
+          return (
+            <div className="card p-4 space-y-3">
+              <h2 className="text-lg font-bold text-gray-900 text-center">
+                {capturedPreview ? 'Looks good?' : allGood ? 'Hold still…' : 'Position your face'}
+              </h2>
 
-            {capturedPreview ? (
-              <img
-                src={capturedPreview}
-                alt="Captured selfie"
-                className="w-full aspect-square rounded-xl object-cover border border-surface-border"
-              />
-            ) : (
-              <div className="relative">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  onLoadedMetadata={() => setVideoReady(true)}
-                  onCanPlay={() => setVideoReady(true)}
-                  className="w-full aspect-square rounded-xl object-cover bg-gray-900"
+              {capturedPreview ? (
+                <img
+                  src={capturedPreview}
+                  alt="Captured selfie"
+                  className="w-full rounded-xl object-cover border border-surface-border"
+                  style={{ aspectRatio: '1/1' }}
                 />
-                <canvas ref={canvasRef} className="hidden" />
-                {!videoReady && (
-                  <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-gray-900">
-                    <Loader2 className="w-8 h-8 text-white/60 animate-spin" />
-                  </div>
-                )}
-                {/* Face alignment guide — oval with color feedback */}
-                {videoReady && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none rounded-xl overflow-hidden">
-                    <div className={`w-44 h-52 rounded-full border-4 transition-all duration-300 ${
-                      faceStatus === 'aligned'
-                        ? 'border-green-400 shadow-[0_0_24px_rgba(74,222,128,0.6)]'
-                        : faceStatus === 'searching'
-                        ? 'border-amber-400'
-                        : 'border-white/40'
-                    }`} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Auto-capture status hint */}
-            {!capturedPreview && faceStatus === 'searching' && (
-              <p className="text-center text-xs text-amber-500 font-medium -mt-1">
-                Move your face into the circle
-              </p>
-            )}
-            {!capturedPreview && faceStatus === 'aligned' && (
-              <p className="text-center text-xs text-green-500 font-medium -mt-1">
-                ✓ Hold still — capturing…
-              </p>
-            )}
-            {!capturedPreview && faceStatus === 'inactive' && videoReady && (
-              <p className="text-center text-xs text-gray-400 -mt-1">
-                Position your face in the circle
-              </p>
-            )}
-
-            <div className="space-y-2">
-              {!capturedPreview && (
-                <button
-                  onClick={capturePhoto}
-                  disabled={!videoReady}
-                  className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Camera className="w-4 h-4" />
-                  {!videoReady ? 'Camera loading…' : faceStatus !== 'inactive' ? 'Capture Manually' : 'Capture'}
-                </button>
-              )}
-              {capturedPreview && (
+              ) : (
                 <>
-                  <button
-                    onClick={handleUpload}
-                    className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors"
+                  {/* ── Viewport ── */}
+                  <div
+                    className="relative rounded-xl overflow-hidden bg-gray-900"
+                    style={{ aspectRatio: '3/4' }}
                   >
-                    <Upload className="w-4 h-4" />
-                    Use This Photo
-                  </button>
-                  <button
-                    onClick={() => { setCapturedBlob(null); setCapturedPreview(null); startCamera(); }}
-                    className="btn-secondary w-full flex items-center justify-center gap-2"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    Retake
-                  </button>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      onLoadedMetadata={() => setVideoReady(true)}
+                      onCanPlay={() => setVideoReady(true)}
+                      className="w-full h-full object-cover"
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+
+                    {/* Camera loading */}
+                    {!videoReady && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Loader2 className="w-8 h-8 text-white/60 animate-spin" />
+                      </div>
+                    )}
+
+                    {/* Model loading overlay */}
+                    {videoReady && modelStatus === 'loading' && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 gap-3">
+                        <Loader2 className="w-7 h-7 text-white animate-spin" />
+                        <p className="text-white text-xs font-medium tracking-wide">Loading face models…</p>
+                        <p className="text-white/60 text-xs">First load may take a moment</p>
+                      </div>
+                    )}
+
+                    {/* SVG oval guide */}
+                    {videoReady && (
+                      <svg
+                        className="absolute inset-0 w-full h-full pointer-events-none"
+                        viewBox="0 0 300 400"
+                        preserveAspectRatio="xMidYMid slice"
+                      >
+                        <defs>
+                          <mask id="face-oval-mask">
+                            <rect width="300" height="400" fill="white" />
+                            <ellipse cx="150" cy="168" rx="90" ry="116" fill="black" />
+                          </mask>
+                        </defs>
+                        {/* Dim area outside oval */}
+                        <rect width="300" height="400" fill="rgba(0,0,0,0.42)" mask="url(#face-oval-mask)" />
+                        {/* Oval border: white → amber (face found) → green (all pass) */}
+                        <ellipse
+                          cx="150" cy="168" rx="90" ry="116"
+                          fill="none"
+                          stroke={allGood ? '#4ade80' : checks.face ? '#fbbf24' : 'rgba(255,255,255,0.55)'}
+                          strokeWidth="2.5"
+                          style={{ transition: 'stroke 0.3s' }}
+                        />
+                        {/* Alignment tick marks */}
+                        <line x1="46"  y1="168" x2="66"  y2="168" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+                        <line x1="234" y1="168" x2="254" y2="168" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+                        <line x1="150" y1="44"  x2="150" y2="62"  stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+                        <line x1="150" y1="288" x2="150" y2="306" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+                      </svg>
+                    )}
+
+                    {/* Green inner glow when all checks pass */}
+                    {allGood && (
+                      <div className="absolute inset-0 pointer-events-none rounded-xl ring-2 ring-inset ring-green-400/60 shadow-[inset_0_0_32px_rgba(74,222,128,0.25)]" />
+                    )}
+
+                    {/* Countdown */}
+                    {countdown !== null && (
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <span
+                          key={countdown}
+                          className="font-black text-white drop-shadow-[0_4px_24px_rgba(0,0,0,0.7)] photo-countdown-pop"
+                          style={{ fontSize: '6rem', lineHeight: 1 }}
+                        >
+                          {countdown}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Flash */}
+                    {showFlash && <div className="absolute inset-0 bg-white pointer-events-none" />}
+
+                    {/* Status hint strip */}
+                    {videoReady && modelStatus === 'ready' && countdown === null && hint && (
+                      <div
+                        className="absolute bottom-0 left-0 right-0 px-4 py-2 text-center"
+                        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, transparent 100%)' }}
+                      >
+                        <p className="text-white text-xs font-medium">{hint}</p>
+                      </div>
+                    )}
+
+                    {/* Model error notice */}
+                    {modelStatus === 'error' && (
+                      <div className="absolute bottom-3 left-3 right-3 bg-red-900/80 text-white text-xs p-2 rounded-lg text-center">
+                        Auto-detect unavailable — use the button below
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Check pills ── */}
+                  {modelStatus === 'ready' && (
+                    <div className="flex flex-wrap gap-1.5 justify-center">
+                      {PILL_DEFS.map(({ key, icon, label }) => (
+                        <div
+                          key={key}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all duration-300 ${
+                            checks[key]
+                              ? 'bg-green-50 border-green-300 text-green-700'
+                              : 'bg-gray-50 border-gray-200 text-gray-400'
+                          }`}
+                        >
+                          <span>{icon}</span>
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
+
+              <div className="space-y-2">
+                {!capturedPreview && (
+                  <button
+                    onClick={capturePhoto}
+                    disabled={!videoReady}
+                    className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Camera className="w-4 h-4" />
+                    {!videoReady ? 'Camera loading…' : modelStatus === 'ready' ? 'Capture Manually' : 'Capture'}
+                  </button>
+                )}
+                {capturedPreview && (
+                  <>
+                    <button
+                      onClick={handleUpload}
+                      className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors"
+                    >
+                      <Upload className="w-4 h-4" />
+                      Use This Photo
+                    </button>
+                    <button
+                      onClick={() => { setCapturedBlob(null); setCapturedPreview(null); startCamera(); }}
+                      className="btn-secondary w-full flex items-center justify-center gap-2"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      Retake
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Uploading */}
         {step === 'uploading' && (
