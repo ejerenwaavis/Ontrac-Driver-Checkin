@@ -2,18 +2,19 @@ import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   ScanBarcode, LayoutDashboard, Users, Truck, ClipboardList,
-  Settings, LogOut, Menu, X, ChevronRight, ShieldCheck
+  Settings, LogOut, Menu, X, ChevronRight, ShieldCheck, Link2
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import toast from 'react-hot-toast';
 
 const navItems = [
-  { to: '/scanner',    icon: ScanBarcode,    label: 'Scanner',    roles: ['admin', 'supervisor', 'clerk'] },
-  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',  roles: ['admin', 'supervisor'] },
-  { to: '/admissions', icon: ClipboardList,  label: 'Admissions', roles: ['admin', 'supervisor'] },
-  { to: '/drivers',    icon: Truck,          label: 'Drivers',    roles: ['admin', 'supervisor'] },
-  { to: '/users',      icon: Users,          label: 'Users',      roles: ['admin'] },
-  { to: '/settings',   icon: Settings,       label: 'Settings',   roles: ['admin', 'supervisor', 'clerk'] },
+  { to: '/scanner',    icon: ScanBarcode,     label: 'Scanner',       roles: ['admin', 'supervisor', 'clerk'] },
+  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard',     roles: ['admin', 'supervisor'] },
+  { to: '/admissions', icon: ClipboardList,   label: 'Admissions',    roles: ['admin', 'supervisor'] },
+  { to: '/drivers',    icon: Truck,           label: 'Drivers',       roles: ['admin', 'supervisor'] },
+  { to: '/invites',    icon: Link2,           label: 'Photo Invites', roles: ['admin', 'supervisor'] },
+  { to: '/users',      icon: Users,           label: 'Users',         roles: ['admin'] },
+  { to: '/settings',   icon: Settings,        label: 'Settings',      roles: ['admin', 'supervisor', 'clerk'] },
 ];
 
 const roleBadge = { admin: 'badge-admin', supervisor: 'badge-supervisor', clerk: 'badge-clerk' };

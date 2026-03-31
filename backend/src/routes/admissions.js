@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { body, param } from 'express-validator';
 import {
+  lookupDriver,
   scanDriver,
   supervisorOverride,
   getAdmissions,
@@ -12,6 +13,12 @@ import authorize from '../middleware/authorize.js';
 const router = Router();
 
 router.use(authenticate);
+
+router.post(
+  '/lookup',
+  [body('driverNumber').trim().notEmpty().withMessage('Driver number required')],
+  lookupDriver
+);
 
 router.post(
   '/scan',

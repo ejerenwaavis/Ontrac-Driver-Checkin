@@ -13,6 +13,7 @@ import authRoutes from './routes/auth.js';
 import driverRoutes from './routes/drivers.js';
 import admissionRoutes from './routes/admissions.js';
 import userRoutes from './routes/users.js';
+import inviteRoutes from './routes/invite.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +58,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/admissions', admissionRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/invite', inviteRoutes);
 
 // ─── Serve Frontend in Production ────────────────────────────────────────────
 const distPath = path.join(__dirname, '../../frontend/dist');

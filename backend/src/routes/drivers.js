@@ -8,6 +8,7 @@ import {
   uploadMiddleware,
   getProviders,
   getRosterSnapshots,
+  hardDeleteDriver,
 } from '../controllers/driverController.js';
 import authenticate from '../middleware/authenticate.js';
 import authorize from '../middleware/authorize.js';
@@ -38,5 +39,7 @@ router.post(
   },
   uploadDrivers
 );
+
+router.delete('/:id', authorize('admin'), hardDeleteDriver);
 
 export default router;

@@ -50,6 +50,10 @@ const driverSchema = new mongoose.Schema(
       type: String,
       maxlength: [500, 'Notes cannot exceed 500 characters'],
     },
+    photoUrl: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

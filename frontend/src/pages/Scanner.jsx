@@ -2,59 +2,89 @@ import { useState, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ScanBarcode, Wifi } from 'lucide-react';
 import BarcodeScanner from '../components/BarcodeScanner.jsx';
+import DriverPreview from '../components/DriverPreview.jsx';
 import AdmissionResult from '../components/AdmissionResult.jsx';
 import OverrideModal from '../components/OverrideModal.jsx';
 import api from '../services/api.js';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
 
-export default function Scanner() {
-  const [result, setResult] = useState(null);
-  const [overrideTarget, setOverrideTarget] = useState(null); // { driverNumber, driverName, reason }
+// phase: 'idle' | 'preview' | 'admitted'
 
-  const scanMutation = useMutation({
-    mutationFn: ({ driverNumber, source }) => api.post('/admissions/scan', { driverNumber, source }).then((r) => r.data),
+export default function Scanner() {
+  const [phase, setPhase] = useState('idle');
+  const [previewData, setPreviewData] = useState(null);
+  const [admissionData, setAdmissionData] = useState(null);
+  const [overrideTarget, setOverrideTarget] = useState(null);
+
+  // ── Step 1: lookup (no DB write) ───────────────────────────────────────────
+  const lookupMutation = useMutation({
+    mutationFn: ({ driverNumber }) =>
+      api.post('/admissions/lookup', { driverNumber }).then((r) => r.data),
     onSuccess: (data) => {
-      setResult(data);
-      if (data.requiresOverride) {
-        // Keep result visible but also offer override after a moment
-      }
+      setPreviewData(data);
+      setPhase('preview');
     },
     onError: (err) => {
       toast.error(err.response?.data?.message || 'Scan failed. Please try again.');
     },
   });
 
-  const handleScan = useCallback(
-    (code, source = 'scan') => {
-      if (scanMutation.isPending) return;
-      setResult(null);
-      setOverrideTarget(null);
-      scanMutation.mutate({ driverNumber: code, source });
+  // ── Step 2: admit (records admission) ─────────────────────────────────────
+  const admitMutation = useMutation({
+    mutationFn: ({ driverNumber }) =>
+      api.post('/admissions/scan', { driverNumber, source: 'scan' }).then((r) => r.data),
+    onSuccess: (data) => {
+      setPreviewData(null);
+      setAdmissionData(data);
+      setPhase('admitted');
     },
-    [scanMutation]
+    onError: (err) => {
+      toast.error(err.response?.data?.message || 'Admission failed. Please try again.');
+    },
+  });
+
+  const handleScan = useCallback(
+    (code) => {
+      if (lookupMutation.isPending || admitMutation.isPending) return;
+      setPhase('idle');
+      setPreviewData(null);
+      setAdmissionData(null);
+      setOverrideTarget(null);
+      lookupMutation.mutate({ driverNumber: code });
+    },
+    [lookupMutation, admitMutation]
   );
 
+  const handleAdmit = useCallback(() => {
+    if (!previewData) return;
+    admitMutation.mutate({ driverNumber: previewData.driverNumber });
+  }, [previewData, admitMutation]);
+
+  const handleOverrideOpen = useCallback(() => {
+    if (!previewData) return;
+    setOverrideTarget({
+      driverNumber: previewData.driverNumber,
+      driverName: previewData.driverName,
+      reason: previewData.result,
+    });
+  }, [previewData]);
+
+  const handleOverrideSuccess = useCallback((overrideResult) => {
+    setOverrideTarget(null);
+    setPreviewData(null);
+    setAdmissionData(overrideResult);
+    setPhase('admitted');
+  }, []);
+
   const handleDismiss = useCallback(() => {
-    setResult(null);
+    setPhase('idle');
+    setPreviewData(null);
+    setAdmissionData(null);
     setOverrideTarget(null);
   }, []);
 
-  const handleOverrideOpen = () => {
-    if (!result) return;
-    setOverrideTarget({
-      driverNumber: result.driverNumber,
-      driverName: result.driverName,
-      reason: result.result,
-    });
-  };
-
-  const handleOverrideSuccess = (overrideResult) => {
-    setOverrideTarget(null);
-    setResult(overrideResult);
-  };
-
-  const isProcessing = scanMutation.isPending;
+  const isProcessing = lookupMutation.isPending || admitMutation.isPending;
 
   return (
     <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
@@ -75,37 +105,39 @@ export default function Scanner() {
         </div>
       </div>
 
-      {/* Scanner component */}
-      <div className={`card p-4 transition-opacity duration-150 ${isProcessing ? 'opacity-60 pointer-events-none' : ''}`}>
-        <BarcodeScanner onScan={handleScan} disabled={isProcessing || !!result} />
+      {/* Scanner — disabled while a result is on screen or processing */}
+      <div className={`card p-4 transition-opacity duration-150 ${
+        isProcessing || phase !== 'idle' ? 'opacity-60 pointer-events-none' : ''
+      }`}>
+        <BarcodeScanner onScan={handleScan} disabled={isProcessing || phase !== 'idle'} />
       </div>
 
-      {/* Result card */}
-      {result && (
-        <AdmissionResult
-          result={result}
+      {/* Step 1 — Preview card: face verify then Admit / Override */}
+      {phase === 'preview' && previewData && (
+        <DriverPreview
+          result={previewData}
+          onAdmit={handleAdmit}
+          onOverride={handleOverrideOpen}
           onDismiss={handleDismiss}
-          autoResetMs={5000}
+          autoResetMs={15000}
         />
       )}
 
-      {/* Override button — shown when result requires supervisor */}
-      {result?.requiresOverride && !overrideTarget && (
-        <button
-          onClick={handleOverrideOpen}
-          className="btn-danger w-full"
-        >
-          <ScanBarcode className="w-4 h-4" />
-          Request Supervisor Override
-        </button>
+      {/* Step 2 — Admission result card */}
+      {phase === 'admitted' && admissionData && (
+        <AdmissionResult
+          result={admissionData}
+          onDismiss={handleDismiss}
+          autoResetMs={15000}
+        />
       )}
 
-      {/* Hint when no result yet */}
-      {!result && !isProcessing && (
+      {/* Hint when idle */}
+      {phase === 'idle' && !isProcessing && (
         <div className="text-center py-6">
           <ScanBarcode className="w-12 h-12 text-gray-200 mx-auto mb-3" />
           <p className="text-sm text-gray-400">Scan or enter a driver number above</p>
-          <p className="text-xs text-gray-300 mt-1">Results auto-clear after 5 seconds</p>
+          <p className="text-xs text-gray-300 mt-1">Results auto-clear after 15 seconds</p>
         </div>
       )}
 
