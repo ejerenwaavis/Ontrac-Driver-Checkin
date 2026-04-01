@@ -33,14 +33,17 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   contentSecurityPolicy: {
     directives: {
-      // Spread helmet's sensible defaults, then override what we need
-      ...require('helmet').contentSecurityPolicy.getDefaultDirectives(),
-      // Allow images from same origin, inline data URIs, and Cloudinary
-      'img-src': ["'self'", 'data:', 'https://res.cloudinary.com'],
-      // face-api model weights fetched from same origin (/models/*)
-      'connect-src': ["'self'"],
+      defaultSrc:  ["'self'"],
+      scriptSrc:   ["'self'"],
+      styleSrc:    ["'self'", "'unsafe-inline'"],
+      fontSrc:     ["'self'", 'https:', 'data:'],
+      // Allow images from same origin, inline data URIs, and Cloudinary CDN
+      imgSrc:      ["'self'", 'data:', 'https://res.cloudinary.com'],
+      connectSrc:  ["'self'"],
+      frameSrc:    ["'none'"],
+      objectSrc:   ["'none'"],
+      upgradeInsecureRequests: [],
     },
-    // Keep CSP active in both dev and prod
   },
 }));
 
