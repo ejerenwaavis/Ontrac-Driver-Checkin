@@ -35,8 +35,8 @@ app.use(helmet({
     directives: {
       defaultSrc:  ["'self'"],
       scriptSrc:   ["'self'"],
-      styleSrc:    ["'self'", "'unsafe-inline'"],
-      fontSrc:     ["'self'", 'https:', 'data:'],
+      styleSrc:    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc:     ["'self'", 'https://fonts.gstatic.com', 'data:'],
       // Allow images from same origin, inline data URIs, and Cloudinary CDN
       imgSrc:      ["'self'", 'data:', 'https://res.cloudinary.com'],
       connectSrc:  ["'self'"],
