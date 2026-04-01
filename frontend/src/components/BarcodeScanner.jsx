@@ -103,7 +103,6 @@ export default function BarcodeScanner({ onScan, disabled = false }) {
               disabled={disabled}
               placeholder="Driver number (type or scan)"
               className="input flex-1 font-mono uppercase tracking-wider"
-              data-scanner-target="true"
               autoFocus
               autoComplete="off"
               spellCheck={false}

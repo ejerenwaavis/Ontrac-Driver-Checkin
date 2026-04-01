@@ -13,6 +13,8 @@ import Admissions from './pages/Admissions.jsx';
 import Users from './pages/Users.jsx';
 import Settings from './pages/Settings.jsx';
 import NotFound from './pages/NotFound.jsx';
+import PhotoRegister from './pages/PhotoRegister.jsx';
+import InviteManagement from './pages/InviteManagement.jsx';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -30,9 +32,10 @@ export default function App() {
 
   return (
     <Routes>
-      {/* Public */}
+      {/* Public — no auth required */}
       <Route path="/login" element={!user ? <Login /> : <Navigate to="/" replace />} />
       <Route path="/mfa-setup" element={<MFASetup />} />
+      <Route path="/join/:token" element={<PhotoRegister />} />
 
       {/* Protected — all roles */}
       <Route element={<ProtectedRoute />}>
@@ -51,6 +54,16 @@ export default function App() {
           {/* Admin only */}
           <Route element={<ProtectedRoute roles={['admin']} />}>
             <Route path="/users" element={<Users />} />
+          </Route>
+
+          {/* Admin + Supervisor */}
+          <Route element={<ProtectedRoute roles={['admin', 'supervisor']} />}>
+            <Route path="/invites" element={<InviteManagement />} />
+          </Route>
+
+          {/* Admin + Supervisor */}
+          <Route element={<ProtectedRoute roles={['admin', 'supervisor']} />}>
+            <Route path="/invites" element={<InviteManagement />} />
           </Route>
         </Route>
       </Route>

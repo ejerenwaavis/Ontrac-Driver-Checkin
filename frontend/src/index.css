@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Countdown pop animation for PhotoRegister */
+@keyframes photo-countdown-pop {
+  from { transform: scale(1.5); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
+}
+.photo-countdown-pop { animation: photo-countdown-pop 0.3s ease; }
+
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;

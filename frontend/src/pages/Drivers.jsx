@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Upload, ToggleLeft, ToggleRight, Filter, Loader2, FileSpreadsheet, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, RefreshCcw, AlertTriangle } from 'lucide-react';
+import { Search, Upload, ToggleLeft, ToggleRight, Filter, Loader2, FileSpreadsheet, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, RefreshCcw, AlertTriangle, Trash2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth.js';
 import api from '../services/api.js';
 import toast from 'react-hot-toast';
@@ -17,7 +17,8 @@ export default function Drivers() {
   const [uploadResult, setUploadResult] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [strictReplace, setStrictReplace] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState(null); // { dropCount, dropPercent, previousTotal, newTotal, pendingFile }
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null); // { _id, driverNumber, name }
 
   const { data, isLoading } = useQuery({
     queryKey: ['drivers', page, search, statusFilter],
@@ -34,6 +35,16 @@ export default function Drivers() {
       toast.success(`Driver ${vars.status === 'active' ? 'activated' : 'deactivated'}`);
     },
     onError: () => toast.error('Failed to update driver status'),
+  });
+
+  const deleteDriver = useMutation({
+    mutationFn: (id) => api.delete(`/drivers/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['drivers'] });
+      toast.success('Driver deleted');
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to delete driver'),
   });
 
   const handleUpload = async (e, pendingFile = null, confirmedDrop = false) => {
@@ -157,6 +168,36 @@ export default function Drivers() {
         </div>
       )}
 
+      {/* Delete confirmation dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-modal p-6 max-w-sm w-full mx-4 animate-slide-up">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Delete Driver</h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Permanently delete <strong>{deleteTarget.name}</strong> ({deleteTarget.driverNumber})? This also removes their photo from storage. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1 text-sm">Cancel</button>
+              <button
+                onClick={() => deleteDriver.mutate(deleteTarget._id)}
+                disabled={deleteDriver.isPending}
+                className="btn-danger flex-1 text-sm flex items-center justify-center gap-1.5"
+              >
+                {deleteDriver.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Upload result banner */}
       {uploadResult && (
         <div className="card p-4 border-l-4 border-l-green-500 animate-slide-up">
@@ -263,15 +304,26 @@ export default function Drivers() {
                     </td>
                     {user?.role === 'admin' && (
                       <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => toggleStatus.mutate({ id: driver._id, status: driver.status === 'active' ? 'inactive' : 'active' })}
-                          disabled={toggleStatus.isPending}
-                          className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-surface-muted transition-colors"
-                        >
-                          {driver.status === 'active'
-                            ? <><ToggleRight className="w-4 h-4 text-green-600" /> Deactivate</>
-                            : <><ToggleLeft className="w-4 h-4 text-gray-400" /> Activate</>}
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => toggleStatus.mutate({ id: driver._id, status: driver.status === 'active' ? 'inactive' : 'active' })}
+                            disabled={toggleStatus.isPending}
+                            className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-surface-muted transition-colors"
+                          >
+                            {driver.status === 'active'
+                              ? <><ToggleRight className="w-4 h-4 text-green-600" /> Deactivate</>
+                              : <><ToggleLeft className="w-4 h-4 text-gray-400" /> Activate</>}
+                          </button>
+                          {driver.status === 'inactive' && (
+                            <button
+                              onClick={() => setDeleteTarget({ _id: driver._id, driverNumber: driver.driverNumber, name: driver.name })}
+                              title="Delete driver"
+                              className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>

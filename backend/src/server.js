@@ -13,6 +13,7 @@ import authRoutes from './routes/auth.js';
 import driverRoutes from './routes/drivers.js';
 import admissionRoutes from './routes/admissions.js';
 import userRoutes from './routes/users.js';
+import inviteRoutes from './routes/invite.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,7 +31,20 @@ connectDB();
 // ─── Security Middleware ──────────────────────────────────────────────────────
 app.use(helmet({
   crossOriginEmbedderPolicy: false,
-  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:  ["'self'"],
+      scriptSrc:   ["'self'"],
+      styleSrc:    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc:     ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      // Allow images from same origin, inline data URIs, and Cloudinary CDN
+      imgSrc:      ["'self'", 'data:', 'https://res.cloudinary.com'],
+      connectSrc:  ["'self'"],
+      frameSrc:    ["'none'"],
+      objectSrc:   ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
 }));
 
 app.use(cors({
@@ -57,6 +71,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/admissions', admissionRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/invite', inviteRoutes);
 
 // ─── Serve Frontend in Production ────────────────────────────────────────────
 const distPath = path.join(__dirname, '../../frontend/dist');

@@ -6,8 +6,61 @@ import User from '../models/User.js';
 import { createAuditLog, getClientIp, getUserAgent } from '../middleware/auditLog.js';
 import { verifyTotp } from '../utils/mfa.js';
 import bcrypt from 'bcryptjs';
+import { getDriverPhotoUrl } from '../utils/ontracAdapter.js';
 
 const todayKey = () => dayjs().format('YYYY-MM-DD');
+
+// ── POST /api/admissions/lookup ───────────────────────────────────────────────
+// Read-only — returns driver info + photo URL without recording any admission.
+export const lookupDriver = async (req, res, next) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const driverNumber = String(req.body.driverNumber).trim().toUpperCase();
+
+    const driver = await Driver.findOne({ driverNumber });
+
+    if (!driver) {
+      return res.json({
+        success: true,
+        result: 'NOT_FOUND',
+        driverNumber,
+        requiresOverride: true,
+        message: 'Driver number not found in system',
+      });
+    }
+
+    const photoUrl = await getDriverPhotoUrl(driverNumber, driver.photoUrl);
+
+    if (driver.status !== 'active') {
+      return res.json({
+        success: true,
+        result: 'INACTIVE',
+        driverNumber,
+        driverName: driver.name,
+        regionalServiceProvider: driver.regionalServiceProvider,
+        photoUrl,
+        requiresOverride: true,
+        message: 'Driver account is inactive',
+      });
+    }
+
+    return res.json({
+      success: true,
+      result: 'FOUND',
+      driverNumber,
+      driverName: driver.name,
+      regionalServiceProvider: driver.regionalServiceProvider,
+      photoUrl,
+      requiresOverride: false,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
 
 // ── POST /api/admissions/scan ─────────────────────────────────────────────────
 export const scanDriver = async (req, res, next) => {

@@ -4,6 +4,7 @@ import Driver from '../models/Driver.js';
 import DriverRosterSnapshot from '../models/DriverRosterSnapshot.js';
 import { processDriverUpload } from '../utils/xlsxUpload.js';
 import { createAuditLog, getClientIp, getUserAgent } from '../middleware/auditLog.js';
+import { deleteDriverPhoto } from '../utils/cloudinary.js';
 
 // ── Multer (memory storage — no temp files on disk) ───────────────────────────
 const upload = multer({
@@ -168,6 +169,38 @@ export const getProviders = async (req, res, next) => {
   try {
     const providers = await Driver.distinct('regionalServiceProvider');
     return res.json({ success: true, providers: providers.filter(Boolean).sort() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── DELETE /api/drivers/:id — hard delete (admin only) ───────────────────────
+export const hardDeleteDriver = async (req, res, next) => {
+  try {
+    const driver = await Driver.findById(req.params.id);
+    if (!driver) return res.status(404).json({ success: false, message: 'Driver not found' });
+
+    if (driver.status !== 'inactive') {
+      return res.status(400).json({
+        success: false,
+        message: 'Driver must be deactivated before deletion.',
+      });
+    }
+
+    // Remove Cloudinary photo (non-fatal)
+    await deleteDriverPhoto(driver.driverNumber);
+
+    const { driverNumber, name } = driver;
+    await driver.deleteOne();
+
+    await createAuditLog('DRIVER_HARD_DELETED', {
+      userId: req.user._id, userEmail: req.user.email, userRole: req.user.role,
+      resource: 'Driver', resourceId: req.params.id,
+      details: { driverNumber, name },
+      ipAddress: getClientIp(req), userAgent: getUserAgent(req),
+    });
+
+    return res.json({ success: true, message: `Driver ${driverNumber} deleted` });
   } catch (err) {
     next(err);
   }

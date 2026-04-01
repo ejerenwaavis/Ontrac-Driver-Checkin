@@ -39,6 +39,11 @@ const auditLogSchema = new mongoose.Schema(
         'PASSWORD_CHANGED',
         'PASSWORD_RESET_BY_ADMIN',
         'USER_MFA_RESET',
+        // Driver photos & invites
+        'DRIVER_PHOTO_UPLOADED',
+        'INVITE_CREATED',
+        'INVITE_REVOKED',
+        'DRIVER_HARD_DELETED',
       ],
       index: true,
     },
