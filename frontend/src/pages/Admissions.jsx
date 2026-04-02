@@ -10,13 +10,30 @@ const methodBadge = {
   supervisor_override: { label: 'Override', cls: 'badge-admin' },
 };
 
+const formatDwell = (minutes) => {
+  if (minutes == null || Number.isNaN(Number(minutes))) {
+    return '—';
+  }
+
+  const totalMinutes = Number(minutes);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+
+  const rounded = Math.round(totalMinutes);
+  const hours = Math.floor(rounded / 60);
+  const rem = rounded % 60;
+  return rem > 0 ? `${hours}h ${rem}m` : `${hours}h`;
+};
+
 export default function Admissions() {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admissions', page, search, dateFilter],
+    queryKey: ['admissions', page, search, dateFilter, statusFilter],
     queryFn: () =>
       api.get('/admissions', {
         params: {
@@ -24,6 +41,7 @@ export default function Admissions() {
           limit: 50,
           driverNumber: search.toUpperCase() || undefined,
           date: dateFilter || undefined,
+          status: statusFilter || undefined,
         },
       }).then((r) => r.data),
     keepPreviousData: true,
@@ -35,7 +53,7 @@ export default function Admissions() {
   return (
     <div className="px-4 py-6 max-w-5xl mx-auto space-y-5">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">Admission Log</h1>
+        <h1 className="text-xl font-bold text-gray-900">Admission and Exit Log</h1>
         <p className="text-sm text-gray-500 mt-0.5">
           {pagination?.total != null ? `${pagination.total} records` : 'Full history'}
         </p>
@@ -59,9 +77,18 @@ export default function Admissions() {
           onChange={(e) => { setDateFilter(e.target.value); setPage(1); }}
           className="input w-auto"
         />
-        {(search || dateFilter) && (
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="input w-auto"
+        >
+          <option value="">All cycles</option>
+          <option value="open">Open cycles</option>
+          <option value="closed">Completed cycles</option>
+        </select>
+        {(search || dateFilter || statusFilter) && (
           <button
-            onClick={() => { setSearch(''); setDateFilter(''); setPage(1); }}
+            onClick={() => { setSearch(''); setDateFilter(''); setStatusFilter(''); setPage(1); }}
             className="btn-secondary px-3"
           >
             Clear
@@ -87,7 +114,9 @@ export default function Admissions() {
                 <tr className="bg-surface-soft">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Driver</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden sm:table-cell">Provider</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Time</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Check In</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">Check Out</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden lg:table-cell">Duration</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Entry</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Method</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider hidden md:table-cell">By</th>
@@ -109,6 +138,19 @@ export default function Admissions() {
                         <p className="text-gray-700">{format(new Date(a.admittedAt), 'h:mm a')}</p>
                         <p className="text-xs text-gray-400">{format(new Date(a.admittedAt), 'MMM d, yyyy')}</p>
                       </td>
+                      <td className="px-4 py-3 whitespace-nowrap hidden md:table-cell">
+                        {a.checkedOutAt ? (
+                          <>
+                            <p className="text-gray-700">{format(new Date(a.checkedOutAt), 'h:mm a')}</p>
+                            <p className="text-xs text-gray-400">{format(new Date(a.checkedOutAt), 'MMM d, yyyy')}</p>
+                          </>
+                        ) : (
+                          <span className="badge-clerk">Still inside</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell text-gray-600 text-xs">
+                        {formatDwell(a.dwellMinutes)}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           {a.entrySequence === 1
@@ -122,6 +164,9 @@ export default function Admissions() {
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <p className="text-xs text-gray-500">{a.admittedBy?.name || '—'}</p>
+                        {a.checkedOutBy?.name && (
+                          <p className="text-xs text-blue-600">Out: {a.checkedOutBy.name}</p>
+                        )}
                         {a.method === 'supervisor_override' && a.supervisorId?.name && (
                           <p className="text-xs text-purple-600 flex items-center gap-0.5">
                             <ShieldAlert className="w-3 h-3" />{a.supervisorId.name}

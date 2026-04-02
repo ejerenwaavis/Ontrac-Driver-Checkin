@@ -21,6 +21,33 @@ const CONFIG = {
     title: 'RE-ENTRY',
     titleColor: 'text-white',
   },
+  CHECKED_OUT: {
+    bg: 'bg-blue-50',
+    border: 'border-blue-300',
+    headerBg: 'bg-blue-600',
+    icon: CheckCircle,
+    iconColor: 'text-white',
+    title: 'CHECKED OUT',
+    titleColor: 'text-white',
+  },
+  ALREADY_ADMITTED: {
+    bg: 'bg-orange-50',
+    border: 'border-orange-300',
+    headerBg: 'bg-orange-500',
+    icon: RefreshCw,
+    iconColor: 'text-white',
+    title: 'ALREADY CHECKED IN',
+    titleColor: 'text-white',
+  },
+  NOT_CHECKED_IN: {
+    bg: 'bg-slate-50',
+    border: 'border-slate-300',
+    headerBg: 'bg-slate-700',
+    icon: XCircle,
+    iconColor: 'text-white',
+    title: 'NO OPEN CHECK-IN',
+    titleColor: 'text-white',
+  },
   INACTIVE: {
     bg: 'bg-red-50',
     border: 'border-red-200',
@@ -48,6 +75,22 @@ const CONFIG = {
     title: 'OVERRIDE ADMITTED',
     titleColor: 'text-white',
   },
+};
+
+const formatDwell = (minutes) => {
+  if (minutes == null || Number.isNaN(Number(minutes))) {
+    return null;
+  }
+
+  const totalMinutes = Number(minutes);
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`;
+  }
+
+  const wholeMinutes = Math.round(totalMinutes);
+  const hours = Math.floor(wholeMinutes / 60);
+  const rem = wholeMinutes % 60;
+  return rem > 0 ? `${hours}h ${rem}m` : `${hours}h`;
 };
 
 /**
@@ -122,6 +165,18 @@ export default function AdmissionResult({ result, onDismiss, autoResetMs = 15000
           <div className="flex items-baseline gap-2">
             <span className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Time</span>
             <span className="text-sm text-gray-700">{format(new Date(result.admittedAt), 'h:mm:ss a')}</span>
+          </div>
+        )}
+        {result.checkedOutAt && (
+          <div className="flex items-baseline gap-2">
+            <span className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">Checked out</span>
+            <span className="text-sm text-gray-700">{format(new Date(result.checkedOutAt), 'h:mm:ss a')}</span>
+          </div>
+        )}
+        {result.dwellMinutes != null && (
+          <div className="flex items-baseline gap-2">
+            <span className="text-xs font-medium text-gray-500 w-20 flex-shrink-0">On-site</span>
+            <span className="text-sm text-gray-700">{formatDwell(result.dwellMinutes)}</span>
           </div>
         )}
         {result.supervisorName && (

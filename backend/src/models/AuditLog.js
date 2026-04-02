@@ -23,6 +23,7 @@ const auditLogSchema = new mongoose.Schema(
         // Driver admissions
         'ADMISSION_GRANTED',
         'ADMISSION_REENTRY',
+        'ADMISSION_CHECKOUT',
         'ADMISSION_DENIED_INACTIVE',
         'ADMISSION_DENIED_NOT_FOUND',
         'ADMISSION_OVERRIDE',

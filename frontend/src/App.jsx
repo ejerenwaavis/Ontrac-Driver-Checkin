@@ -8,6 +8,7 @@ import Login from './pages/Login.jsx';
 import MFASetup from './pages/MFASetup.jsx';
 import Scanner from './pages/Scanner.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import Analytics from './pages/Analytics.jsx';
 import Drivers from './pages/Drivers.jsx';
 import Admissions from './pages/Admissions.jsx';
 import Users from './pages/Users.jsx';
@@ -47,6 +48,7 @@ export default function App() {
           {/* Admin + Supervisor */}
           <Route element={<ProtectedRoute roles={['admin', 'supervisor']} />}>
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/admissions" element={<Admissions />} />
             <Route path="/drivers" element={<Drivers />} />
           </Route>
@@ -54,11 +56,6 @@ export default function App() {
           {/* Admin only */}
           <Route element={<ProtectedRoute roles={['admin']} />}>
             <Route path="/users" element={<Users />} />
-          </Route>
-
-          {/* Admin + Supervisor */}
-          <Route element={<ProtectedRoute roles={['admin', 'supervisor']} />}>
-            <Route path="/invites" element={<InviteManagement />} />
           </Route>
 
           {/* Admin + Supervisor */}
