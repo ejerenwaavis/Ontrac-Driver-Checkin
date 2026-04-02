@@ -1,11 +1,13 @@
 import { Router } from 'express';
-import { body, param } from 'express-validator';
+import { body, query } from 'express-validator';
 import {
   lookupDriver,
   scanDriver,
+  checkoutDriver,
   supervisorOverride,
   getAdmissions,
   getAdmissionStats,
+  getAdmissionAnalytics,
 } from '../controllers/admissionController.js';
 import authenticate from '../middleware/authenticate.js';
 import authorize from '../middleware/authorize.js';
@@ -30,6 +32,15 @@ router.post(
 );
 
 router.post(
+  '/checkout',
+  [
+    body('driverNumber').trim().notEmpty().withMessage('Driver number required'),
+    body('source').optional().isIn(['scan', 'manual']).withMessage('Invalid source'),
+  ],
+  checkoutDriver
+);
+
+router.post(
   '/override',
   [
     body('driverNumber').trim().notEmpty().withMessage('Driver number required'),
@@ -42,6 +53,15 @@ router.post(
 );
 
 router.get('/stats', authorize('admin', 'supervisor'), getAdmissionStats);
+router.get(
+  '/analytics',
+  authorize('admin', 'supervisor'),
+  [
+    query('startDate').optional().isISO8601().withMessage('startDate must be YYYY-MM-DD'),
+    query('endDate').optional().isISO8601().withMessage('endDate must be YYYY-MM-DD'),
+  ],
+  getAdmissionAnalytics
+);
 router.get('/', authorize('admin', 'supervisor'), getAdmissions);
 
 export default router;

@@ -59,6 +59,29 @@ const admissionSchema = new mongoose.Schema(
 
     // Entry sequence for re-entries (1 = first entry, 2+ = re-entry)
     entrySequence: { type: Number, default: 1 },
+
+    // Checkout lifecycle fields
+    checkedOutAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    checkedOutBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    checkedOutByName: { type: String },
+    checkoutMethod: {
+      type: String,
+      enum: ['scan', 'manual'],
+    },
+    // Minutes on-site between check-in and checkout
+    dwellMinutes: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -67,6 +90,8 @@ const admissionSchema = new mongoose.Schema(
 
 // Compound index for efficient daily re-entry checks
 admissionSchema.index({ driverNumber: 1, date: 1 });
+admissionSchema.index({ driverNumber: 1, checkedOutAt: 1, admittedAt: -1 });
+admissionSchema.index({ date: 1, checkedOutAt: 1 });
 
 const Admission = mongoose.model('Admission', admissionSchema);
 export default Admission;
